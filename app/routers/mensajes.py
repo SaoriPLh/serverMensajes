@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from app import schemas, models, database
 from datetime import datetime
 from typing import List
+from typing import Optional
+import asyncio
 
 
 router = APIRouter(
@@ -36,3 +38,24 @@ def crear_mensaje(mensaje: schemas.MensajeCrear, db: Session = Depends(database.
 @router.get("/recibidos/{usuario_id}", response_model=List[schemas.Mensaje])
 def obtener_mensajes_recibidos(usuario_id: int, db: Session = Depends(database.get_db)):
     return db.query(models.Mensaje).filter(models.Mensaje.para_usuario_id == usuario_id).all()
+
+
+
+@router.get("/recibidos/{usuario_id}/esperar-nuevo", response_model=Optional[schemas.Mensaje])
+async def esperar_nuevo_mensaje(usuario_id: int, ultimo_id: int = 0, db: Session = Depends(database.get_db)):
+    timeout = 30  # tiempo máximo de espera en segundos
+    tiempo_espera = 0
+
+    while tiempo_espera < timeout:
+        mensaje_nuevo = db.query(models.Mensaje)\
+            .filter(models.Mensaje.para_usuario_id == usuario_id)\
+            .order_by(models.Mensaje.id.desc())\
+            .first()
+
+        if mensaje_nuevo and mensaje_nuevo.id > ultimo_id:
+            return mensaje_nuevo
+
+        await asyncio.sleep(2)
+        tiempo_espera += 2
+
+    return None  # Si no hay mensaje nuevo, responder None (null)
